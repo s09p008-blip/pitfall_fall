@@ -1,0 +1,1629 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>地表徘徊生物 × ピットフォールトラップ・シミュレーション（対照実験版）</title>
+<style>
+  :root{
+    --bg:#eef2f6;
+    --panel:#ffffff;
+    --ink:#1f2937;
+    --muted:#6b7280;
+    --accent:#3b82f6;
+    --accent2:#10b981;
+    --warn:#ef4444;
+    --shadow:0 8px 24px rgba(15,23,42,0.1);
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%; margin:0; background:var(--bg); color:var(--ink); 
+    font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", "Helvetica", Arial, sans-serif;}
+  
+  .app{
+    display:grid;
+    grid-template-columns: 1fr 360px;
+    grid-template-rows: auto 1fr 280px;
+    gap:14px;
+    height:100vh; padding:14px;
+    grid-template-areas:
+      "tabs tabs"
+      "sim panel"
+      "results panel";
+  }
+  
+  @media (max-width: 1200px) {
+    .app {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto auto auto;
+      grid-template-areas:
+        "tabs"
+        "panel"
+        "sim"
+        "results";
+      height: auto;
+      min-height: 100vh;
+    }
+    #simWrap { min-height: 400px; }
+  }
+  
+  /* タブナビゲーション */
+  .tab-nav{
+    grid-area: tabs;
+    display: flex;
+    gap: 8px;
+    background: var(--panel);
+    padding: 12px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  
+  .tab-btn{
+    padding: 10px 20px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+  
+  .tab-btn.active{
+    background: var(--accent);
+    color: white;
+  }
+  
+  .tab-btn:hover:not(.active){
+    background: #f3f4f6;
+  }
+  
+  /* タブコンテンツ */
+  .tab-content{
+    display: none;
+  }
+  
+  .tab-content.active{
+    display: contents;
+  }
+  
+  /* ワークシート専用スタイル */
+  #worksheetView{
+    grid-area: sim;
+    grid-row: sim / span 2;
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 30px 40px;
+    overflow-y: auto;
+    max-height: calc(100vh - 100px);
+  }
+  
+  .worksheet-header{
+    text-align: center;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 3px solid var(--ink);
+  }
+  
+  .worksheet-header h1{
+    font-size: 22px;
+    margin: 0 0 10px 0;
+  }
+  
+  .worksheet-section{
+    margin: 25px 0;
+    padding: 20px;
+    background: #f9fafb;
+    border-radius: 10px;
+    border-left: 4px solid var(--accent);
+  }
+  
+  .worksheet-section h2{
+    font-size: 18px;
+    margin: 0 0 15px 0;
+    color: var(--accent);
+  }
+  
+  .worksheet-section h3{
+    font-size: 16px;
+    margin: 20px 0 10px 0;
+    color: var(--ink);
+  }
+  
+  .worksheet-section p, .worksheet-section li{
+    line-height: 1.8;
+    margin: 10px 0;
+  }
+  
+  .input-area{
+    background: white;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 15px;
+    min-height: 80px;
+    margin: 15px 0;
+  }
+  
+  .input-area textarea{
+    width: 100%;
+    min-height: 60px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+  }
+  
+  .comparison-table{
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+    background: white;
+    font-size: 13px;
+  }
+  
+  .comparison-table th, .comparison-table td{
+    border: 1px solid #d1d5db;
+    padding: 10px 8px;
+    text-align: center;
+  }
+  
+  .comparison-table th{
+    background: #f3f4f6;
+    font-weight: 600;
+  }
+  
+  .comparison-table td:first-child{
+    text-align: left;
+    font-weight: 600;
+  }
+  
+  .comparison-table input[type="number"]{
+    width: 60px;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 4px;
+    font-size: 13px;
+    text-align: center;
+  }
+  
+  .comparison-table .env-values{
+    font-size: 11px;
+    color: var(--muted);
+  }
+  
+  .highlight-box{
+    background: #dbeafe;
+    border: 2px solid #3b82f6;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 15px 0;
+  }
+  
+  .highlight-box strong{
+    color: #1e40af;
+  }
+  
+  .print-only{
+    display: none;
+  }
+  
+  @media print {
+    .app{
+      display: block;
+      height: auto;
+    }
+    .tab-nav, #panel, #resultsWrap{
+      display: none !important;
+    }
+    #worksheetView{
+      display: block !important;
+      max-height: none;
+      box-shadow: none;
+      grid-row: auto;
+    }
+    .no-print{
+      display: none !important;
+    }
+    .print-only{
+      display: block;
+    }
+    .worksheet-section{
+      page-break-inside: avoid;
+    }
+  }
+  
+  .card{
+    background:var(--panel); border-radius:var(--radius);
+    box-shadow:var(--shadow); overflow:hidden;
+  }
+  
+  #simWrap{ 
+    grid-area: sim; 
+    display:flex; 
+    position:relative;
+    min-height: 400px;
+  }
+  
+  #simCanvas{ 
+    width:100%; 
+    height:100%; 
+    display:block; 
+    background:linear-gradient(180deg,#dde7f3,#eaf0f7); 
+    border-radius:var(--radius);
+  }
+  
+  .hint{
+    position:absolute; left:12px; top:12px; font-size:12px; color:#fff;
+    background:rgba(0,0,0,0.35); padding:6px 10px; border-radius:10px; backdrop-filter:blur(2px);
+  }
+  
+  .env-overlay{
+    position:absolute; right:12px; top:12px; font-size:11px; color:#fff;
+    background:rgba(0,0,0,0.5); padding:8px 12px; border-radius:10px; 
+    backdrop-filter:blur(2px); max-width: 200px;
+  }
+  
+  .env-overlay div { margin: 3px 0; }
+  
+  #panel{ 
+    grid-area: panel; 
+    padding:14px; 
+    display:flex; 
+    flex-direction:column; 
+    gap:12px;
+    overflow-y: auto;
+    max-height: 100vh;
+  }
+  
+  .panel-section{
+    background:var(--panel); border-radius:var(--radius); box-shadow:var(--shadow);
+    padding:14px; display:flex; flex-direction:column; gap:10px;
+  }
+  
+  .panel-section h3{ margin:0; font-size:16px; }
+  .row{ display:flex; align-items:center; gap:10px; }
+  .row label{ flex:1; font-size:13px; color:var(--muted);}
+  
+  input[type="range"]{ width:100%;}
+  select, input[type="number"], input[type="text"]{
+    width:100%; padding:8px 10px; border:1px solid #e5e7eb; 
+    border-radius:10px; outline:none; font-size: 13px;
+  }
+  
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding:10px 12px; border:none; border-radius:12px; cursor:pointer; 
+    font-weight:600; font-size: 13px;
+    transition:transform .05s ease, box-shadow .2s ease; box-shadow:var(--shadow);
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{ background:var(--accent); color:#fff; }
+  .btn.success{ background:var(--accent2); color:#063; }
+  .btn.ghost{ background:#f3f4f6; color:#111827;}
+  .btn.warn{ background:var(--warn); color:#fff; }
+  .btn.info{ background:#8b5cf6; color:#fff; }
+  .btn:disabled{ opacity:0.5; cursor:not-allowed; }
+  
+  .toggle{ display:flex; align-items:center; gap:8px; font-size:13px;}
+  .toggle input{ width:18px; height:18px;}
+  
+  #resultsWrap{ 
+    grid-area: results; 
+    display:grid; 
+    grid-template-columns: 1.5fr 1fr; 
+    gap:14px;
+  }
+  
+  @media (max-width: 768px) {
+    #resultsWrap {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  #barCanvas{ width:100%; height:100%; display:block; border-radius:var(--radius);}
+  
+  #table{ 
+    background:var(--panel); 
+    border-radius:var(--radius); 
+    box-shadow:var(--shadow); 
+    padding:12px; 
+    overflow:auto;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  table{ 
+    width:100%; 
+    border-collapse:collapse; 
+    font-size:12px;
+  }
+  
+  th, td{ 
+    border-bottom:1px solid #e5e7eb; 
+    padding:8px 6px; 
+    text-align:right;
+  }
+  th:first-child, td:first-child{text-align:left;}
+  
+  .legend{ display:flex; flex-wrap:wrap; gap:8px; font-size:12px;}
+  .badge{ 
+    display:inline-flex; 
+    align-items:center; 
+    gap:6px; 
+    background:#f3f4f6; 
+    border-radius:999px; 
+    padding:4px 10px;
+  }
+  .dot{ width:10px; height:10px; border-radius:50%;}
+  .small{ font-size:12px; color:var(--muted);}
+  .sep{ height:1px; background:#e5e7eb; margin:8px 0;}
+  
+  kbd{ 
+    background:#111827; 
+    color:#fff; 
+    padding:2px 6px; 
+    border-radius:6px; 
+    font-size:11px;
+  }
+  
+  .help-text{
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+    padding: 8px;
+    background: #f9fafb;
+    border-radius: 8px;
+    margin-top: 4px;
+  }
+  
+  .status-bar{
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    padding: 10px 14px;
+    border-radius: 10px;
+    backdrop-filter: blur(4px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+  }
+  
+  .progress-bar{
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 3px;
+    margin: 0 12px;
+    overflow: hidden;
+  }
+  
+  .progress-fill{
+    height: 100%;
+    background: var(--accent2);
+    transition: width 0.3s ease;
+  }
+  
+  .record-notice{
+    background: #fef3c7;
+    border: 2px solid #f59e0b;
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    margin: 10px 0;
+    text-align: center;
+    font-weight: 600;
+  }
+  
+  .experiment-log{
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 12px;
+    background: #f9fafb;
+    border-radius: 8px;
+    padding: 10px;
+  }
+  
+  .log-item{
+    padding: 8px;
+    margin: 4px 0;
+    background: white;
+    border-radius: 6px;
+    border-left: 3px solid var(--accent2);
+  }
+  
+  .log-item.active{
+    background: #dbeafe;
+    border-left-color: var(--accent);
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- タブナビゲーション -->
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('simulation')">🔬 シミュレーション</button>
+    <button class="tab-btn" onclick="switchTab('worksheet')">📊 対照実験ワークシート</button>
+    <button class="tab-btn no-print" onclick="window.print()">🖨️ 印刷</button>
+  </div>
+
+  <!-- シミュレーションタブ -->
+  <div id="simulationTab" class="tab-content active">
+    <div id="simWrap" class="card">
+      <canvas id="simCanvas"></canvas>
+      <div class="hint">
+        クリック：トラップ設置 | <kbd>Alt</kbd>+クリック：削除 | ドラッグ：移動
+      </div>
+      <div class="env-overlay" id="envOverlay" style="display:none;">
+        <strong>選択地点の環境</strong>
+        <div id="envDetail"></div>
+      </div>
+      <div class="status-bar">
+        <span id="timeDisplay">時間: 0.0秒 / 60秒</span>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <span id="captureDisplay">捕獲数: 0匹</span>
+      </div>
+    </div>
+
+    <div id="panel">
+      <div class="panel-section">
+        <h3>🎯 対照実験の手順</h3>
+        <div class="help-text">
+          <strong>1.</strong> トラップを設置（位置を決める）<br>
+          <strong>2.</strong> 環境を選んで実験 → 記録<br>
+          <strong>3.</strong> 「再実験」で環境だけ変更<br>
+          <strong>4.</strong> トラップ位置は同じで別環境を試す<br>
+          <strong>5.</strong> 結果を比較して考察！
+        </div>
+        <div class="record-notice" id="recordNotice" style="display:none;">
+          📊 実験完了！ワークシートに記録しよう
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3>⚙️ 基本操作</h3>
+        <div class="row" style="gap:8px;">
+          <button id="playBtn" class="btn primary">▶ 再生</button>
+          <button id="stepBtn" class="btn ghost">⏱ +1秒</button>
+        </div>
+        <div class="row" style="gap:8px; margin-top:8px;">
+          <button id="rerunBtn" class="btn info">🔄 再実験<br><span style="font-size:10px;">(トラップ保持)</span></button>
+          <button id="resetBtn" class="btn warn">↺ 全リセット</button>
+        </div>
+        <div class="row">
+          <label>仮想時間の速さ</label>
+          <input id="speed" type="range" min="0.5" max="4" step="0.25" value="2">
+          <span id="speedVal">2.00×</span>
+        </div>
+        <div class="row">
+          <label>観察時間（秒）</label>
+          <input id="duration" type="range" min="10" max="240" step="10" value="60">
+          <span id="durVal">60</span>
+        </div>
+        <div class="toggle">
+          <input id="showAgents" type="checkbox" checked>
+          <span>個体の動きを表示</span>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3>🌲 環境プリセット</h3>
+        <select id="preset">
+          <option value="forest">林内（湿り↑・落葉↑・光↓）</option>
+          <option value="edge">林縁（環境のムラ大）</option>
+          <option value="meadow">草地（光↑・落葉↓）</option>
+          <option value="shade">木陰（光↓・湿り↑）</option>
+          <option value="custom">カスタム</option>
+        </select>
+        <div class="row">
+          <label>💧 湿り気</label>
+          <input id="moist" type="range" min="0" max="1" step="0.01" value="0.7">
+          <span id="moistVal">0.70</span>
+        </div>
+        <div class="row">
+          <label>🍂 落ち葉量</label>
+          <input id="litter" type="range" min="0" max="1" step="0.01" value="0.7">
+          <span id="litterVal">0.70</span>
+        </div>
+        <div class="row">
+          <label>☀️ 光</label>
+          <input id="light" type="range" min="0" max="1" step="0.01" value="0.3">
+          <span id="lightVal">0.30</span>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3>🐛 種と個体数</h3>
+        <div id="legend" class="legend"></div>
+        <div class="row">
+          <label>各種の初期個体数</label>
+          <input id="density" type="range" min="50" max="600" step="10" value="400">
+          <span id="densVal">400</span>
+        </div>
+        <div class="row">
+          <label>餌の誘引効果</label>
+          <input id="bait" type="range" min="0" max="1.5" step="0.05" value="0.3">
+          <span id="baitVal">0.30</span>
+        </div>
+        <div class="row">
+          <label>トラップ口径（px）</label>
+          <input id="trapR" type="range" min="8" max="40" step="1" value="18">
+          <span id="trapRVal">18</span>
+        </div>
+        <div class="row" style="gap:8px;">
+          <button id="clearTrap" class="btn ghost">🗑 トラップ消去</button>
+          <button id="autoTrap" class="btn success">＋ 自動4点</button>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3>📊 実験記録</h3>
+        <button id="recordBtn" class="btn success" style="width:100%; margin-bottom:8px;">
+          💾 現在の結果を記録
+        </button>
+        <div class="experiment-log" id="experimentLog">
+          <div class="small" style="text-align:center; color:var(--muted);">記録された実験はありません</div>
+        </div>
+        <button id="fillWorksheetBtn" class="btn info" style="width:100%; margin-top:8px;">
+          📋 ワークシートに転記
+        </button>
+      </div>
+    </div>
+
+    <div id="resultsWrap">
+      <div class="card" style="padding:12px;">
+        <strong style="font-size:14px;">📊 種別ごとの捕獲数</strong>
+        <canvas id="barCanvas"></canvas>
+      </div>
+      <div id="table" class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <strong>トラップ別の結果</strong>
+        </div>
+        <div style="flex:1; overflow:auto;">
+          <table id="trapTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>ゴモク</th>
+                <th>シデムシ</th>
+                <th>アリ</th>
+                <th>ダンゴ</th>
+                <th>合計</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ワークシートタブ -->
+  <div id="worksheetTab" class="tab-content">
+    <div id="worksheetView">
+      <div class="worksheet-header">
+        <h1>地表徘徊性生物と環境要因の関係を調べる対照実験</h1>
+        <div style="font-size:14px; margin-top:10px;">～シミュレーションによる探究活動～</div>
+        <div class="print-only" style="margin-top:15px; font-size:13px;">
+          年　　組　　番　氏名：　　　　　　　　　　　
+        </div>
+      </div>
+
+      <div class="worksheet-section">
+        <h2>【探究の問い】</h2>
+        <p style="font-size:16px; font-weight:600;">
+          環境条件（湿り気・落ち葉量・光）を変えると、地表徘徊性生物の捕獲数はどのように変化するだろうか？
+        </p>
+      </div>
+
+      <div class="worksheet-section">
+        <h2>【仮説】</h2>
+        <p>各環境（林内・草地・林縁・木陰）で、どの種が多く捕獲されると予想するか？またその理由は？</p>
+        <div class="input-area">
+          <textarea id="hypothesis" placeholder="例：林内（湿り↑・落葉↑・光↓）では、湿った暗い環境を好む種が多く捕獲されると予想する。なぜなら..."></textarea>
+        </div>
+      </div>
+
+      <div class="worksheet-section">
+        <h2>【実験方法】</h2>
+        <div class="highlight-box">
+          <strong>⚠️ 重要：対照実験の条件</strong>
+          <ul style="margin:10px 0; padding-left:20px;">
+            <li><strong>独立変数</strong>（変える条件）：環境条件（湿り・落葉・光）</li>
+            <li><strong>従属変数</strong>（測定する値）：各種の捕獲数</li>
+            <li><strong>制御変数</strong>（固定する条件）：<br>
+              ・トラップの位置（4箇所に固定）<br>
+              ・観察時間（60秒）<br>
+              ・餌の誘引効果<br>
+              ・各種の初期個体数
+            </li>
+          </ul>
+        </div>
+        
+        <h3>手順</h3>
+        <ol>
+          <li>シミュレーションでトラップを4箇所に設置する</li>
+          <li>環境プリセット「林内」を選択し、実験を実施する</li>
+          <li>各種の捕獲数（合計）を下表に記録する</li>
+          <li><strong>「再実験」ボタンを押す</strong>（トラップの位置はそのまま）</li>
+          <li>環境プリセットを「草地」に変更し、実験を実施する</li>
+          <li>同様に記録する</li>
+          <li>「林縁」「木陰」でも実施し、全ての環境での結果を比較する</li>
+        </ol>
+      </div>
+
+      <div class="worksheet-section">
+        <h2>【実験結果】</h2>
+        <p><strong>※ シミュレーションで「ワークシートに転記」ボタンを押すと自動入力されます</strong></p>
+        
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th rowspan="2">環境条件</th>
+              <th colspan="3">環境パラメータ</th>
+              <th colspan="4">各種の捕獲数（合計）</th>
+              <th rowspan="2">総捕獲数</th>
+            </tr>
+            <tr>
+              <th>湿り</th>
+              <th>落葉</th>
+              <th>光</th>
+              <th>ゴモク</th>
+              <th>シデムシ</th>
+              <th>アリ</th>
+              <th>ダンゴ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>林内</td>
+              <td class="env-values">0.75</td>
+              <td class="env-values">0.75</td>
+              <td class="env-values">0.25</td>
+              <td><input type="number" id="forest_carabid" min="0" value="0"></td>
+              <td><input type="number" id="forest_silphid" min="0" value="0"></td>
+              <td><input type="number" id="forest_ant" min="0" value="0"></td>
+              <td><input type="number" id="forest_pillbug" min="0" value="0"></td>
+              <td id="forest_total">0</td>
+            </tr>
+            <tr>
+              <td>草地</td>
+              <td class="env-values">0.35</td>
+              <td class="env-values">0.25</td>
+              <td class="env-values">0.80</td>
+              <td><input type="number" id="meadow_carabid" min="0" value="0"></td>
+              <td><input type="number" id="meadow_silphid" min="0" value="0"></td>
+              <td><input type="number" id="meadow_ant" min="0" value="0"></td>
+              <td><input type="number" id="meadow_pillbug" min="0" value="0"></td>
+              <td id="meadow_total">0</td>
+            </tr>
+            <tr>
+              <td>林縁</td>
+              <td class="env-values">0.55</td>
+              <td class="env-values">0.55</td>
+              <td class="env-values">0.55</td>
+              <td><input type="number" id="edge_carabid" min="0" value="0"></td>
+              <td><input type="number" id="edge_silphid" min="0" value="0"></td>
+              <td><input type="number" id="edge_ant" min="0" value="0"></td>
+              <td><input type="number" id="edge_pillbug" min="0" value="0"></td>
+              <td id="edge_total">0</td>
+            </tr>
+            <tr>
+              <td>木陰</td>
+              <td class="env-values">0.65</td>
+              <td class="env-values">0.55</td>
+              <td class="env-values">0.25</td>
+              <td><input type="number" id="shade_carabid" min="0" value="0"></td>
+              <td><input type="number" id="shade_silphid" min="0" value="0"></td>
+              <td><input type="number" id="shade_ant" min="0" value="0"></td>
+              <td><input type="number" id="shade_pillbug" min="0" value="0"></td>
+              <td id="shade_total">0</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="worksheet-section">
+        <h2>【考察】</h2>
+        
+        <h3>1. 仮説の検証</h3>
+        <p>実験結果は仮説と一致したか？一致しなかった部分があれば、その理由を考えよう。</p>
+        <div class="input-area">
+          <textarea id="discussion1" placeholder="仮説と結果を比較して記述..."></textarea>
+        </div>
+
+        <h3>2. 各種と環境の関係（環境嗜好の発見）</h3>
+        <p>各種について、どのような環境条件で捕獲数が多かったか？実験結果から、各種がどのような環境を好むと考えられるか？</p>
+        <div class="input-area">
+          <textarea id="discussion2" placeholder="種ごとに、どの環境で多く捕獲されたかを分析し、各種の環境嗜好を推測してみよう...&#10;&#10;例：&#10;・ゴモクムシ類は林内で最も多く捕獲されたので、湿った暗い環境を好むと考えられる。&#10;・クロヤマアリは草地で..."></textarea>
+        </div>
+
+        <h3>3. トラップ位置を固定する意義</h3>
+        <p>今回の実験では、なぜトラップの位置を変えずに環境だけを変えたのか？その科学的意義を説明しよう。</p>
+        <div class="input-area">
+          <textarea id="discussion3" placeholder="対照実験における制御変数の重要性について..."></textarea>
+        </div>
+
+        <h3>4. 発展的考察</h3>
+        <p>次のような要因は、実験結果にどのような影響を与えると考えられるか？</p>
+        <ul>
+          <li>餌の誘引効果を強くした場合、環境による違いはどうなるか？</li>
+          <li>観察時間を変更した場合、結果はどう変わるか？</li>
+          <li>同じ環境で複数回試行した場合、結果はどれくらいばらつくか？</li>
+          <li>実際の野外調査でピットフォールトラップを使う際の注意点は？</li>
+        </ul>
+        <div class="input-area">
+          <textarea id="discussion4" placeholder="実験条件の変更が結果に与える影響を考察..."></textarea>
+        </div>
+      </div>
+
+      <div class="worksheet-section">
+        <h2>【まとめ】</h2>
+        <p>この実験を通して分かったことを、「環境と生物の関係」という視点でまとめよう。各種はどのような環境に適応していると考えられるか？</p>
+        <div class="input-area">
+          <textarea id="summary" placeholder="実験全体のまとめ..." style="min-height:100px;"></textarea>
+        </div>
+      </div>
+
+      <div class="worksheet-section print-only">
+        <h3>【自己評価】</h3>
+        <table class="comparison-table">
+          <tr>
+            <td style="text-align:left;">対照実験の方法を理解できた</td>
+            <td style="text-align:center;">A　　B　　C</td>
+          </tr>
+          <tr>
+            <td style="text-align:left;">環境と生物の関係について考察できた</td>
+            <td style="text-align:center;">A　　B　　C</td>
+          </tr>
+          <tr>
+            <td style="text-align:left;">積極的に探究活動に取り組めた</td>
+            <td style="text-align:center;">A　　B　　C</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   地表徘徊生物シミュレーション - 対照実験版
+   ========================================================= */
+
+// タブ切り替え
+function switchTab(tabName) {
+  const tabs = document.querySelectorAll('.tab-content');
+  const btns = document.querySelectorAll('.tab-btn');
+  
+  tabs.forEach(tab => tab.classList.remove('active'));
+  btns.forEach(btn => btn.classList.remove('active'));
+  
+  if(tabName === 'simulation') {
+    document.getElementById('simulationTab').classList.add('active');
+    btns[0].classList.add('active');
+  } else if(tabName === 'worksheet') {
+    document.getElementById('worksheetTab').classList.add('active');
+    btns[1].classList.add('active');
+  }
+}
+
+// 実験記録の保存
+let experimentRecords = [];
+
+function recordExperiment() {
+  if(traps.length === 0) {
+    alert('トラップが設置されていません');
+    return;
+  }
+  
+  if(elapsed < targetDuration * 0.9) {
+    if(!confirm('観察時間が十分ではありませんが、記録しますか？')) {
+      return;
+    }
+  }
+  
+  const presetNames = {
+    'forest': '林内',
+    'edge': '林縁',
+    'meadow': '草地',
+    'shade': '木陰',
+    'custom': 'カスタム'
+  };
+  
+  const sum = totalBySpecies();
+  const record = {
+    timestamp: new Date().toLocaleString('ja-JP', {hour: '2-digit', minute: '2-digit'}),
+    preset: ui.preset.value,
+    presetName: presetNames[ui.preset.value] || 'カスタム',
+    env: {
+      moist: +ui.moist.value,
+      litter: +ui.litter.value,
+      light: +ui.light.value
+    },
+    trapCount: traps.length,
+    counts: {...sum},
+    total: Object.values(sum).reduce((a,b) => a+b, 0)
+  };
+  
+  experimentRecords.push(record);
+  updateExperimentLog();
+  
+  ui.recordNotice.style.display = 'block';
+  setTimeout(() => {
+    ui.recordNotice.style.display = 'none';
+  }, 3000);
+}
+
+function updateExperimentLog() {
+  const log = document.getElementById('experimentLog');
+  
+  if(experimentRecords.length === 0) {
+    log.innerHTML = '<div class="small" style="text-align:center; color:var(--muted);">記録された実験はありません</div>';
+    return;
+  }
+  
+  log.innerHTML = '';
+  experimentRecords.forEach((rec, idx) => {
+    const div = document.createElement('div');
+    div.className = 'log-item';
+    if(idx === experimentRecords.length - 1) div.classList.add('active');
+    
+    div.innerHTML = `
+      <div style="font-weight:600; margin-bottom:4px;">${rec.presetName} - ${rec.timestamp}</div>
+      <div class="small">
+        湿${(rec.env.moist*100).toFixed(0)} 葉${(rec.env.litter*100).toFixed(0)} 光${(rec.env.light*100).toFixed(0)} | 
+        ゴ:${rec.counts.carabid} シ:${rec.counts.silphid} ア:${rec.counts.ant} ダ:${rec.counts.pillbug}
+      </div>
+    `;
+    
+    log.appendChild(div);
+  });
+  
+  log.scrollTop = log.scrollHeight;
+}
+
+function fillWorksheetFromRecords() {
+  if(experimentRecords.length === 0) {
+    alert('記録された実験がありません。まずシミュレーションを実施して記録してください。');
+    return;
+  }
+  
+  const presetMap = {
+    'forest': 'forest',
+    'meadow': 'meadow',
+    'edge': 'edge',
+    'shade': 'shade'
+  };
+  
+  experimentRecords.forEach(rec => {
+    const presetKey = presetMap[rec.preset];
+    if(!presetKey) return;
+    
+    document.getElementById(`${presetKey}_carabid`).value = rec.counts.carabid || 0;
+    document.getElementById(`${presetKey}_silphid`).value = rec.counts.silphid || 0;
+    document.getElementById(`${presetKey}_ant`).value = rec.counts.ant || 0;
+    document.getElementById(`${presetKey}_pillbug`).value = rec.counts.pillbug || 0;
+    
+    updateRowTotal(presetKey);
+  });
+  
+  alert('ワークシートに実験結果を転記しました！');
+  switchTab('worksheet');
+}
+
+function updateRowTotal(preset) {
+  const carabid = +document.getElementById(`${preset}_carabid`).value || 0;
+  const silphid = +document.getElementById(`${preset}_silphid`).value || 0;
+  const ant = +document.getElementById(`${preset}_ant`).value || 0;
+  const pillbug = +document.getElementById(`${preset}_pillbug`).value || 0;
+  
+  document.getElementById(`${preset}_total`).textContent = carabid + silphid + ant + pillbug;
+}
+
+// 全ての入力フィールドに変更イベントを追加
+['forest', 'meadow', 'edge', 'shade'].forEach(preset => {
+  ['carabid', 'silphid', 'ant', 'pillbug'].forEach(species => {
+    const elem = document.getElementById(`${preset}_${species}`);
+    if(elem) {
+      elem.addEventListener('input', () => updateRowTotal(preset));
+    }
+  });
+});
+
+// キャンバスとレイアウト
+const simCanvas = document.getElementById('simCanvas');
+const barCanvas = document.getElementById('barCanvas');
+const ctx = simCanvas.getContext('2d');
+const gctx = barCanvas.getContext('2d');
+
+function fitCanvas(cnv){
+  const rect = cnv.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  cnv.width = Math.floor(rect.width * dpr);
+  cnv.height = Math.floor(rect.height * dpr);
+  const c = cnv.getContext('2d');
+  c.setTransform(dpr,0,0,dpr,0,0);
+}
+
+function resizeAll(){ 
+  fitCanvas(simCanvas); 
+  fitCanvas(barCanvas); 
+  if(env) regenEnv();
+  draw(0); 
+  drawBar(); 
+}
+window.addEventListener('resize', resizeAll);
+
+// 種の定義（環境嗜好を強化）
+const species = [
+  { key:'carabid', name:'ゴモクムシ類', shortName:'ゴモク', color:'#2563eb', 
+    pref:{moist: +2.0, litter:+1.8, light:-1.5}, speed:60 },
+  { key:'silphid', name:'オオヒラタシデムシ', shortName:'シデムシ', color:'#7c3aed', 
+    pref:{moist: +1.5, litter:+2.0, light:-1.8}, speed:50 },
+  { key:'ant', name:'クロヤマアリ', shortName:'アリ', color:'#111827', 
+    pref:{moist: +0.3, litter:+0.2, light:+0.5}, speed:80 },
+  { key:'pillbug', name:'オカダンゴムシ', shortName:'ダンゴ', color:'#10b981', 
+    pref:{moist: +2.5, litter:+1.5, light:-1.2}, speed:40 },
+];
+
+const legendDiv = document.getElementById('legend');
+species.forEach(s=>{
+  const b = document.createElement('div'); 
+  b.className='badge';
+  const d = document.createElement('div'); 
+  d.className='dot'; 
+  d.style.background=s.color;
+  b.appendChild(d); 
+  b.appendChild(document.createTextNode(s.name));
+  legendDiv.appendChild(b);
+});
+
+// UI要素
+const ui = {
+  play: document.getElementById('playBtn'),
+  step: document.getElementById('stepBtn'),
+  rerun: document.getElementById('rerunBtn'),
+  reset: document.getElementById('resetBtn'),
+  speed: document.getElementById('speed'),
+  speedVal: document.getElementById('speedVal'),
+  duration: document.getElementById('duration'),
+  durVal: document.getElementById('durVal'),
+  showAgents: document.getElementById('showAgents'),
+  preset: document.getElementById('preset'),
+  moist: document.getElementById('moist'),
+  moistVal: document.getElementById('moistVal'),
+  litter: document.getElementById('litter'),
+  litterVal: document.getElementById('litterVal'),
+  light: document.getElementById('light'),
+  lightVal: document.getElementById('lightVal'),
+  density: document.getElementById('density'),
+  densVal: document.getElementById('densVal'),
+  bait: document.getElementById('bait'),
+  baitVal: document.getElementById('baitVal'),
+  trapR: document.getElementById('trapR'),
+  trapRVal: document.getElementById('trapRVal'),
+  clearTrap: document.getElementById('clearTrap'),
+  autoTrap: document.getElementById('autoTrap'),
+  tableBody: document.querySelector('#trapTable tbody'),
+  timeDisplay: document.getElementById('timeDisplay'),
+  captureDisplay: document.getElementById('captureDisplay'),
+  progressFill: document.getElementById('progressFill'),
+  recordBtn: document.getElementById('recordBtn'),
+  fillWorksheetBtn: document.getElementById('fillWorksheetBtn'),
+  recordNotice: document.getElementById('recordNotice'),
+  envOverlay: document.getElementById('envOverlay'),
+  envDetail: document.getElementById('envDetail'),
+};
+
+let env = null;
+let traps = [];
+let agents = [];
+let running = false;
+let elapsed = 0;
+let targetDuration = 60;
+let rng = mulberry32(12345);
+
+function mulberry32(a) {
+  return function() {
+    let t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+}
+
+function perlinNoise2D(x, y, scale=0.05){
+  const X = Math.floor(x*scale), Y = Math.floor(y*scale);
+  const xf = x*scale - X, yf = y*scale - Y;
+  const fade = t => t*t*t*(t*(t*6-15)+10);
+  const lerp = (a,b,t) => a + t*(b-a);
+  const grad = (h,x,y) => {
+    const v = (h&1) ? x : y;
+    return ((h&2) ? -v : v);
+  };
+  const hash = (i,j) => {
+    let h = i*374761393 + j*668265263;
+    h = (h^(h>>>13))*1274126177;
+    return (h^(h>>>16))&3;
+  };
+  const a = grad(hash(X,Y), xf, yf);
+  const b = grad(hash(X+1,Y), xf-1, yf);
+  const c = grad(hash(X,Y+1), xf, yf-1);
+  const d = grad(hash(X+1,Y+1), xf-1, yf-1);
+  const u = fade(xf), v = fade(yf);
+  return lerp(lerp(a,b,u), lerp(c,d,u), v);
+}
+
+function makeField(w, h, moistBase, litterBase, lightBase){
+  const data = [];
+  for(let y=0; y<h; y++){
+    for(let x=0; x<w; x++){
+      const n1 = perlinNoise2D(x,y,0.02)*0.3;
+      const n2 = perlinNoise2D(x,y,0.05)*0.2;
+      const n3 = perlinNoise2D(x+1000,y+1000,0.03)*0.15;
+      const moist = Math.max(0, Math.min(1, moistBase + n1));
+      const litter = Math.max(0, Math.min(1, litterBase + n2));
+      const light = Math.max(0, Math.min(1, lightBase + n3));
+      data.push({moist, litter, light});
+    }
+  }
+  return {w, h, data};
+}
+
+function getEnv(x,y){
+  if(!env) return {moist:0.5, litter:0.5, light:0.5};
+  const ix = Math.floor(y)*env.w + Math.floor(x);
+  if(ix<0 || ix>=env.data.length) return {moist:0.5, litter:0.5, light:0.5};
+  return env.data[ix];
+}
+
+function initAgents(total){
+  agents = [];
+  const perSpecies = Math.floor(total / species.length);
+  for(let s=0; s<species.length; s++){
+    for(let i=0; i<perSpecies; i++){
+      agents.push({
+        x: rng()*simCanvas.width,
+        y: rng()*simCanvas.height,
+        s: s,
+        alive: true
+      });
+    }
+  }
+}
+
+function addTrap(x, y){
+  const r = +ui.trapR.value;
+  const e = getEnv(x, y);
+  traps.push({
+    x, y, r,
+    env: e,
+    count: species.reduce((o,sp)=>{o[sp.key]=0; return o;}, {})
+  });
+  updateTrapTable();
+}
+
+function clearTraps(){
+  traps = [];
+  updateTrapTable();
+  draw();
+}
+
+function autoPlaceTraps(){
+  const w = simCanvas.width, h = simCanvas.height;
+  const positions = [
+    {x: w*0.25, y: h*0.25},
+    {x: w*0.75, y: h*0.25},
+    {x: w*0.25, y: h*0.75},
+    {x: w*0.75, y: h*0.75}
+  ];
+  positions.forEach(p => addTrap(p.x, p.y));
+  draw();
+}
+
+function removeNearestTrap(x, y){
+  let best = -1, minD = Infinity;
+  for(let i=0; i<traps.length; i++){
+    const d = (traps[i].x-x)**2 + (traps[i].y-y)**2;
+    if(d < minD){ minD=d; best=i; }
+  }
+  if(best>=0 && minD < 1600){
+    traps.splice(best, 1);
+    updateTrapTable();
+  }
+}
+
+function update(dt){
+  elapsed += dt;
+  
+  if(elapsed >= targetDuration){
+    running = false;
+    ui.play.textContent = '▶ 再生';
+    updateStatus();
+    return;
+  }
+  
+  updateStatus();
+  
+  const baitStrength = +ui.bait.value;
+  
+  for(const a of agents){
+    if(!a.alive) continue;
+    
+    const sp = species[a.s];
+    const candidates = [];
+    
+    for(let dy=-1; dy<=1; dy++){
+      for(let dx=-1; dx<=1; dx++){
+        if(dx===0 && dy===0) continue;
+        const nx = a.x + dx * sp.speed * dt;
+        const ny = a.y + dy * sp.speed * dt;
+        
+        if(nx<0 || nx>=simCanvas.width || ny<0 || ny>=simCanvas.height) continue;
+        
+        const e = getEnv(nx, ny);
+        
+        let score = sp.pref.moist * e.moist 
+                  + sp.pref.litter * e.litter 
+                  + sp.pref.light * e.light;
+        
+        for(const t of traps){
+          const dist = Math.sqrt((t.x-nx)**2 + (t.y-ny)**2);
+          if(dist < 200){
+            score += baitStrength * (200-dist)/200;
+          }
+        }
+        
+        candidates.push({x:nx, y:ny, score});
+      }
+    }
+    
+    if(candidates.length === 0) continue;
+    
+    const maxScore = Math.max(...candidates.map(c=>c.score));
+    const weights = candidates.map(c => Math.exp((c.score - maxScore)*4));
+    const sumW = weights.reduce((a,b)=>a+b, 0);
+    
+    let r = rng() * sumW;
+    let chosen = candidates[0];
+    for(let i=0; i<candidates.length; i++){
+      r -= weights[i];
+      if(r <= 0){ chosen = candidates[i]; break; }
+    }
+    
+    a.x = chosen.x;
+    a.y = chosen.y;
+    
+    for(const t of traps){
+      const d = Math.sqrt((t.x-a.x)**2 + (t.y-a.y)**2);
+      if(d <= t.r){
+        a.alive = false;
+        t.count[sp.key]++;
+        break;
+      }
+    }
+  }
+}
+
+function updateStatus(){
+  const totalCaptured = agents.filter(a => !a.alive).length;
+  ui.timeDisplay.textContent = `時間: ${elapsed.toFixed(1)}秒 / ${targetDuration}秒`;
+  ui.captureDisplay.textContent = `捕獲数: ${totalCaptured}匹`;
+  const progress = Math.min(100, (elapsed / targetDuration) * 100);
+  ui.progressFill.style.width = progress + '%';
+}
+
+function draw(){
+  const W = simCanvas.width, H = simCanvas.height;
+  ctx.clearRect(0, 0, W, H);
+  
+  if(!env) return;
+  
+  const img = ctx.createImageData(W, H);
+  for(let y=0; y<H; y+=2){
+    for(let x=0; x<W; x+=2){
+      const e = getEnv(x, y);
+      
+      let r = 200 + e.light*40 - e.moist*30;
+      let g = 210 + e.light*30 - e.litter*40;
+      let b = 220 - e.litter*50 + e.moist*20;
+      
+      r = Math.max(0, Math.min(255, r));
+      g = Math.max(0, Math.min(255, g));
+      b = Math.max(0, Math.min(255, b));
+      
+      for(let dy=0; dy<2; dy++){
+        for(let dx=0; dx<2; dx++){
+          const ix = ((y+dy)*W + (x+dx)) * 4;
+          img.data[ix]=r; 
+          img.data[ix+1]=g; 
+          img.data[ix+2]=b; 
+          img.data[ix+3]=255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  
+  for(let i=0; i<traps.length; i++){
+    const t = traps[i];
+    ctx.save();
+    ctx.beginPath(); 
+    ctx.arc(t.x, t.y, t.r, 0, Math.PI*2);
+    ctx.fillStyle='rgba(16,185,129,0.18)';
+    ctx.fill();
+    ctx.lineWidth=2; 
+    ctx.strokeStyle='rgba(16,185,129,0.9)'; 
+    ctx.stroke();
+    ctx.font='bold 12px system-ui'; 
+    ctx.fillStyle='rgba(0,0,0,0.8)';
+    ctx.fillText(`#${i+1}`, t.x - 8, t.y - t.r - 8);
+    ctx.restore();
+  }
+  
+  if(ui.showAgents.checked){
+    for(const a of agents){
+      if(!a.alive) continue;
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, 2.5, 0, Math.PI*2);
+      ctx.fillStyle = species[a.s].color;
+      ctx.globalAlpha = 0.85;
+      ctx.fill(); 
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+function totalBySpecies(){
+  const sum = {};
+  species.forEach(sp => sum[sp.key] = 0);
+  for(const t of traps){
+    for(const k of Object.keys(t.count)){
+      sum[k] += t.count[k];
+    }
+  }
+  return sum;
+}
+
+function drawBar(){
+  const W = barCanvas.width, H = barCanvas.height;
+  gctx.clearRect(0, 0, W, H);
+  
+  const margin = {top: 30, right: 20, bottom: 80, left: 50};
+  const chartW = W - margin.left - margin.right;
+  const chartH = H - margin.top - margin.bottom;
+  
+  const sum = totalBySpecies();
+  const maxV = Math.max(1, ...Object.values(sum));
+  
+  gctx.font='bold 14px system-ui'; 
+  gctx.fillStyle='#1f2937';
+  gctx.fillText('種別ごとの総捕獲数', margin.left, 20);
+  
+  gctx.strokeStyle='rgba(0,0,0,0.2)';
+  gctx.lineWidth = 1;
+  gctx.beginPath();
+  gctx.moveTo(margin.left, margin.top);
+  gctx.lineTo(margin.left, margin.top + chartH);
+  gctx.lineTo(margin.left + chartW, margin.top + chartH);
+  gctx.stroke();
+  
+  const ySteps = 5;
+  gctx.font='11px system-ui';
+  gctx.fillStyle='rgba(0,0,0,0.6)';
+  gctx.textAlign = 'right';
+  for(let i=0; i<=ySteps; i++){
+    const val = Math.round((maxV / ySteps) * i);
+    const y = margin.top + chartH - (chartH / ySteps) * i;
+    gctx.fillText(val.toString(), margin.left - 8, y + 4);
+    
+    gctx.strokeStyle='rgba(0,0,0,0.05)';
+    gctx.beginPath();
+    gctx.moveTo(margin.left, y);
+    gctx.lineTo(margin.left + chartW, y);
+    gctx.stroke();
+  }
+  
+  const barWidth = chartW / species.length * 0.7;
+  const barSpacing = chartW / species.length;
+  
+  gctx.textAlign = 'center';
+  species.forEach((sp, i) => {
+    const x = margin.left + barSpacing * i + (barSpacing - barWidth) / 2;
+    const value = sum[sp.key] || 0;
+    const barHeight = (value / maxV) * chartH;
+    const y = margin.top + chartH - barHeight;
+    
+    gctx.fillStyle = sp.color;
+    gctx.globalAlpha = 0.9;
+    gctx.fillRect(x, y, barWidth, barHeight);
+    gctx.globalAlpha = 1;
+    
+    if(value > 0){
+      gctx.font='bold 12px system-ui';
+      gctx.fillStyle='rgba(0,0,0,0.8)';
+      gctx.fillText(value.toString(), x + barWidth/2, y - 6);
+    }
+    
+    gctx.save();
+    gctx.translate(x + barWidth/2, margin.top + chartH + 12);
+    gctx.rotate(-Math.PI/6);
+    gctx.font='11px system-ui';
+    gctx.fillStyle='rgba(0,0,0,0.7)';
+    gctx.fillText(sp.shortName, 0, 0);
+    gctx.restore();
+  });
+}
+
+function updateTrapTable(){
+  ui.tableBody.innerHTML = '';
+  
+  traps.forEach((t, i) => {
+    const tr = document.createElement('tr');
+    const counts = species.map(sp => t.count[sp.key] || 0);
+    const tot = counts.reduce((a,b) => a+b, 0);
+    
+    tr.innerHTML = `
+      <td>#${i+1}</td>
+      <td>${counts[0]}</td>
+      <td>${counts[1]}</td>
+      <td>${counts[2]}</td>
+      <td>${counts[3]}</td>
+      <td><strong>${tot}</strong></td>
+    `;
+    ui.tableBody.appendChild(tr);
+  });
+  
+  drawBar();
+}
+
+// 再実験機能（トラップ位置保持）
+function rerunExperiment(){
+  if(traps.length === 0){
+    alert('トラップが設置されていません');
+    return;
+  }
+  
+  elapsed = 0;
+  running = false;
+  ui.play.textContent = '▶ 再生';
+  
+  // トラップの捕獲数だけリセット
+  traps.forEach(t => {
+    t.count = species.reduce((o,sp)=>{o[sp.key]=0; return o;}, {});
+  });
+  
+  // エージェント再生成（シードをランダム化）
+  rng = mulberry32(Date.now() + Math.random() * 100000);
+  initAgents(+ui.density.value);
+  
+  updateTrapTable();
+  updateStatus();
+  draw();
+  drawBar();
+  
+  alert('トラップ位置はそのままで、実験をリセットしました。\n環境条件を変更して再実験できます。');
+}
+
+// メインループ
+let last = 0, acc = 0;
+function loop(ts){
+  if(!last) last = ts;
+  const dt = Math.min(0.05, (ts - last) / 1000);
+  last = ts;
+  const fixed = 1/60;
+  
+  if(running){
+    acc += dt * +ui.speed.value;
+    while(acc >= fixed){
+      update(fixed);
+      acc -= fixed;
+    }
+    draw();
+    drawBar();
+  }
+  
+  requestAnimationFrame(loop);
+}
+
+// UIイベント
+ui.play.addEventListener('click', () => {
+  if(traps.length === 0){
+    alert('トラップを設置してください');
+    return;
+  }
+  running = !running;
+  ui.play.textContent = running ? '⏸ 一時停止' : '▶ 再生';
+});
+
+ui.step.addEventListener('click', () => {
+  if(traps.length === 0){
+    alert('トラップを設置してください');
+    return;
+  }
+  const step = 1;
+  for(let t=0; t<step*60; t++){
+    update(1/60);
+  }
+  draw();
+  drawBar();
+  updateTrapTable();
+});
+
+ui.rerun.addEventListener('click', rerunExperiment);
+
+ui.reset.addEventListener('click', () => {
+  if(confirm('全てリセットしますか？（トラップの位置も消去されます）')){
+    setup();
+  }
+});
+
+ui.speed.addEventListener('input', () => {
+  ui.speedVal.textContent = (+ui.speed.value).toFixed(2) + '×';
+});
+
+ui.duration.addEventListener('input', () => {
+  targetDuration = +ui.duration.value;
+  ui.durVal.textContent = ui.duration.value;
+});
+
+ui.moist.addEventListener('input', () => {
+  ui.moistVal.textContent = (+ui.moist.value).toFixed(2);
+  ui.preset.value = 'custom';
+  regenEnv();
+});
+
+ui.litter.addEventListener('input', () => {
+  ui.litterVal.textContent = (+ui.litter.value).toFixed(2);
+  ui.preset.value = 'custom';
+  regenEnv();
+});
+
+ui.light.addEventListener('input', () => {
+  ui.lightVal.textContent = (+ui.light.value).toFixed(2);
+  ui.preset.value = 'custom';
+  regenEnv();
+});
+
+ui.density.addEventListener('input', () => {
+  ui.densVal.textContent = ui.density.value;
+  initAgents(+ui.density.value);
+  draw();
+});
+
+ui.bait.addEventListener('input', () => {
+  ui.baitVal.textContent = (+ui.bait.value).toFixed(2);
+});
+
+ui.trapR.addEventListener('input', () => {
+  ui.trapRVal.textContent = ui.trapR.value;
+  traps.forEach(t => t.r = +ui.trapR.value);
+  draw();
+});
+
+ui.clearTrap.addEventListener('click', clearTraps);
+ui.autoTrap.addEventListener('click', autoPlaceTraps);
+ui.recordBtn.addEventListener('click', recordExperiment);
+ui.fillWorksheetBtn.addEventListener('click', fillWorksheetFromRecords);
+
+ui.preset.addEventListener('change', () => {
+  const p = ui.preset.value;
+  if(p === 'forest'){ setEnvUI(0.75, 0.75, 0.25); }
+  else if(p === 'edge'){ setEnvUI(0.55, 0.55, 0.55); }
+  else if(p === 'meadow'){ setEnvUI(0.35, 0.25, 0.8); }
+  else if(p === 'shade'){ setEnvUI(0.65, 0.55, 0.25); }
+  regenEnv();
+});
+
+function setEnvUI(m, ltr, li){
+  ui.moist.value = m;
+  ui.moistVal.textContent = m.toFixed(2);
+  ui.litter.value = ltr;
+  ui.litterVal.textContent = ltr.toFixed(2);
+  ui.light.value = li;
+  ui.lightVal.textContent = li.toFixed(2);
+}
+
+// マウス操作
+let dragTarget = null;
+
+simCanvas.addEventListener('mousedown', (e) => {
+  const rect = simCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  if(e.altKey){
+    removeNearestTrap(x, y);
+    draw();
+    return;
+  }
+  
+  for(const t of traps){
+    const d = (t.x - x)**2 + (t.y - y)**2;
+    if(d <= (t.r + 10) * (t.r + 10)){
+      dragTarget = t;
+      return;
+    }
+  }
+  
+  addTrap(x, y);
+  draw();
+});
+
+simCanvas.addEventListener('mousemove', (e) => {
+  const rect = simCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  const envData = getEnv(x, y);
+  ui.envDetail.innerHTML = `
+    <div>💧 湿り: ${(envData.moist * 100).toFixed(0)}%</div>
+    <div>🍂 落葉: ${(envData.litter * 100).toFixed(0)}%</div>
+    <div>☀️ 光: ${(envData.light * 100).toFixed(0)}%</div>
+  `;
+  ui.envOverlay.style.display = 'block';
+  
+  if(!dragTarget) return;
+  
+  dragTarget.x = x;
+  dragTarget.y = y;
+  dragTarget.env = getEnv(x, y);
+  updateTrapTable();
+  draw();
+});
+
+simCanvas.addEventListener('mouseleave', () => {
+  ui.envOverlay.style.display = 'none';
+});
+
+window.addEventListener('mouseup', () => {
+  dragTarget = null;
+});
+
+function regenEnv(){
+  if(!simCanvas.width || !simCanvas.height) return;
+  env = makeField(
+    simCanvas.width, 
+    simCanvas.height, 
+    +ui.moist.value, 
+    +ui.litter.value, 
+    +ui.light.value
+  );
+  traps.forEach(t => {
+    t.env = getEnv(t.x, t.y);
+  });
+  updateTrapTable();
+  draw();
+}
+
+function setup(){
+  resizeAll();
+  elapsed = 0;
+  running = false;
+  ui.play.textContent = '▶ 再生';
+  traps.length = 0;
+  experimentRecords = [];
+  updateExperimentLog();
+  targetDuration = +ui.duration.value;
+  rng = mulberry32(Date.now() + Math.random() * 100000);
+  regenEnv();
+  initAgents(+ui.density.value);
+  updateTrapTable();
+  updateStatus();
+  draw();
+  drawBar();
+}
+
+setup();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
